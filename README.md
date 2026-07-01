@@ -157,9 +157,6 @@ npm run build:all    # both  (macOS target requires a Mac)
 
 ## Configuration notes
 
-- **Videos folder** — defaults to `Documents/Stickman Studio/videos`; change it in
-  **Settings**. A one-time migration moves an older `Documents/YouTube Explainer Studio`
-  folder over automatically.
 - **Claude auth** — sign in with a Pro/Max account (no per-token charge for the LLM
   stages) or use an Anthropic API key.
 - **Transcription** — Auto (CPU by default, GPU optional) or "I'll provide an SRT".
