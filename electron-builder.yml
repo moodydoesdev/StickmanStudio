@@ -43,6 +43,13 @@ mac:
   target:
     - target: dmg
       arch: [arm64, x64]
+    # electron-updater applies macOS updates from the .zip (Squirrel.Mac can't
+    # update a .dmg), so a zip must be published alongside it. NOTE: macOS
+    # auto-update only works when the app is code-signed + notarized — the
+    # current CI build is unsigned, so macOS users update by downloading the dmg
+    # until a signing identity (CSC_LINK/CSC_KEY_PASSWORD) is added to the workflow.
+    - target: zip
+      arch: [arm64, x64]
   category: public.app-category.video
   artifactName: ${productName}-${version}-${arch}.${ext}
   # The app shells out to node/python/ffmpeg/claude, so it needs an unsandboxed,
@@ -59,4 +66,7 @@ publish:
   owner: moodydoesdev
   repo: StickmanStudio
   # Assets upload to a draft release named after the version; publish it when ready.
+  # IMPORTANT: the in-app auto-updater cannot see DRAFT releases — installed apps
+  # only pick up an update once you publish the release on GitHub. (Switch this to
+  # `release` if you'd rather have CI publish immediately with no manual step.)
   releaseType: draft

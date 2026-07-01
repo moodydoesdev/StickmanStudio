@@ -193,3 +193,24 @@ export type RunEvent =
 export type InstallEvent =
   | { type: 'install-log'; id: DependencyId; line: string }
   | { type: 'install-done'; id: DependencyId; ok: boolean; message?: string }
+
+/**
+ * Auto-update lifecycle, mirrored from electron-updater's events into a single
+ * flat status the renderer can render directly. The main process caches the
+ * latest one so a freshly-loaded window can catch up via `update:status`.
+ */
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'not-available'; version: string }
+  | {
+      state: 'downloading'
+      version: string
+      percent: number
+      bytesPerSecond: number
+      transferred: number
+      total: number
+    }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }

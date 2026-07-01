@@ -8,6 +8,7 @@ import type {
   RunEvent,
   StageId,
   StageInfo,
+  UpdateStatus,
   VideoProject,
   VoiceFilters,
   VoiceSearchResult
@@ -20,8 +21,22 @@ const api = {
   platform: process.platform as NodeJS.Platform,
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
   saveConfig: (patch: Partial<AppConfig>): Promise<AppConfig> => ipcRenderer.invoke('config:save', patch),
-  appMeta: (): Promise<{ platform: string; videosDir: string }> => ipcRenderer.invoke('app:meta'),
+  appMeta: (): Promise<{ platform: string; videosDir: string; version: string }> => ipcRenderer.invoke('app:meta'),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:pick-folder'),
+
+  // auto-update (GitHub Releases)
+  update: {
+    status: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
+    install: (): Promise<void> => ipcRenderer.invoke('update:install'),
+    onEvent: (cb: (s: UpdateStatus) => void) => {
+      const h = (_: unknown, s: UpdateStatus) => cb(s)
+      ipcRenderer.on('update:event', h)
+      return () => {
+        ipcRenderer.removeListener('update:event', h)
+      }
+    }
+  },
 
   // window controls (custom titlebar)
   win: {
@@ -72,6 +87,22 @@ const api = {
   importSrt: (slug: string): Promise<boolean> => ipcRenderer.invoke('project:import-srt', slug),
   openFolder: (slug: string): Promise<string> => ipcRenderer.invoke('project:open-folder', slug),
   reveal: (slug: string, file: string): Promise<void> => ipcRenderer.invoke('project:reveal', slug, file),
+
+  // timeline editor
+  getTimeline: (slug: string): Promise<{ ok: boolean; data?: any; error?: string }> =>
+    ipcRenderer.invoke('timeline:get', slug),
+  saveTimeline: (slug: string, data: any): Promise<boolean> => ipcRenderer.invoke('timeline:save', slug, data),
+  resetTimeline: (slug: string): Promise<{ ok: boolean; data?: any; error?: string }> =>
+    ipcRenderer.invoke('timeline:reset', slug),
+  renderTimeline: (slug: string, opts: any): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('timeline:render', slug, opts),
+  onTimelineLog: (cb: (line: string) => void) => {
+    const h = (_: unknown, line: string) => cb(line)
+    ipcRenderer.on('timeline:log', h)
+    return () => {
+      ipcRenderer.removeListener('timeline:log', h)
+    }
+  },
 
   // pipeline
   stages: (): Promise<StageInfo[]> => ipcRenderer.invoke('pipeline:stages'),

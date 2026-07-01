@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { CheckCircle, Circle, FilmSlate, Gear, PuzzlePiece, Sparkle } from '@phosphor-icons/react'
 import type { AppConfig, DoctorReport, VideoProject } from '../../shared/types'
 import { LoadingScreen, TitleBar } from './components/Chrome'
+import { UpdateBanner } from './components/UpdateBanner'
 import { Setup } from './views/Setup'
 import { Library } from './views/Library'
 import { NewVideo } from './views/NewVideo'
@@ -19,6 +20,7 @@ export function App(): JSX.Element {
   const [booted, setBooted] = useState(false)
   const [bootMsg, setBootMsg] = useState('Starting up…')
   const [bootError, setBootError] = useState<string | null>(null)
+  const [version, setVersion] = useState('')
 
   const refreshProjects = useCallback(async () => {
     setProjects(await window.api.listProjects())
@@ -44,6 +46,7 @@ export function App(): JSX.Element {
         if (!cfg.setupComplete) setView('setup')
         // Render the UI now — don't block on the (slower) dependency scan.
         setBooted(true)
+        window.api.appMeta().then((m) => setVersion(m.version)).catch(() => {})
         window.api.listProjects().then(setProjects).catch(() => {})
         window.api
           .doctor()
@@ -133,7 +136,7 @@ export function App(): JSX.Element {
               </button>
             )}
             <br />
-            v0.1.0
+            v{version || '0.1.0'}
           </div>
         </aside>
 
@@ -174,6 +177,7 @@ export function App(): JSX.Element {
           {view === 'settings' && <Settings config={config} saveConfig={saveConfig} />}
         </main>
       </div>
+      <UpdateBanner />
     </div>
   )
 }

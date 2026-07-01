@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, Check, Play } from '@phosphor-icons/react'
 import type { AppConfig, StageId, StageInfo, VideoProject } from '../../../shared/types'
 import { RunConsole, StageTracker, useRun } from '../components/Run'
+import { Timeline } from '../components/Timeline'
 
 interface Props {
   slug: string
@@ -10,7 +11,7 @@ interface Props {
   refresh: () => Promise<void>
 }
 
-type Tab = 'overview' | 'script' | 'images' | 'description'
+type Tab = 'overview' | 'script' | 'images' | 'timeline' | 'description'
 
 export function VideoDetail({ slug, config, onBack, refresh }: Props): JSX.Element {
   const [project, setProject] = useState<VideoProject | null>(null)
@@ -64,12 +65,14 @@ export function VideoDetail({ slug, config, onBack, refresh }: Props): JSX.Eleme
       </div>
 
       <div className="seg" style={{ marginBottom: 18 }}>
-        {(['overview', 'script', 'images', 'description'] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
-            {t === 'images' && a.images > 0 ? ` (${a.images})` : ''}
-          </button>
-        ))}
+        {(['overview', 'script', 'images', ...(a.audio && a.images > 0 ? (['timeline'] as Tab[]) : []), 'description'] as Tab[]).map(
+          (t) => (
+            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+              {t[0].toUpperCase() + t.slice(1)}
+              {t === 'images' && a.images > 0 ? ` (${a.images})` : ''}
+            </button>
+          )
+        )}
       </div>
 
       {tab === 'overview' && (
@@ -220,6 +223,17 @@ export function VideoDetail({ slug, config, onBack, refresh }: Props): JSX.Eleme
             />
           ))}
         </div>
+      )}
+
+      {tab === 'timeline' && (
+        <Timeline
+          slug={slug}
+          hasSrt={a.srt}
+          onRendered={async () => {
+            await load()
+            await refresh()
+          }}
+        />
       )}
 
       {tab === 'description' && (

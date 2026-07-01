@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AppConfig, VideoDefaults } from '../../../shared/types'
 import { VoiceField } from '../components/VoicePicker'
+import { UpdatesPanel } from '../components/UpdatesPanel'
 
 interface Props {
   config: AppConfig
@@ -155,6 +156,8 @@ export function Settings({ config, saveConfig }: Props): JSX.Element {
             engine; otherwise leave it off.
           </div>
         </div>
+
+        <UpdatesPanel />
       </div>
     </div>
   )

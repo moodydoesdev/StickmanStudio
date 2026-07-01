@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { DependencyId, InstallEvent, NewVideoRequest, RunEvent } from '../shared/types'
@@ -9,6 +9,8 @@ import { runDoctor } from './lib/doctor'
 import { INSTALL_ORDER, installDependency } from './lib/installers'
 import { cancelRun, planStages, resumeRun, startRun, STAGES } from './lib/pipeline'
 import { getProject, listImages, projectDir, readArtifact, scanProjects, type ArtifactKind } from './lib/projects'
+import { getTimeline, renderTimeline, resetTimeline, saveTimeline, type RenderTimelineOpts, type TimelineData } from './lib/timeline'
+import { checkForUpdates, getUpdateStatus, installUpdateNow } from './lib/updater'
 
 function broadcast(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, payload)
@@ -21,8 +23,14 @@ export function registerIpc(): void {
 
   ipcMain.handle('app:meta', () => ({
     platform: process.platform,
-    videosDir: loadConfig().videosDir
+    videosDir: loadConfig().videosDir,
+    version: app.getVersion()
   }))
+
+  // ── auto-update ──────────────────────────────────────────────────────────────
+  ipcMain.handle('update:status', () => getUpdateStatus())
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.handle('update:install', () => installUpdateNow())
 
   // ── window controls (custom titlebar) ──────────────────────────────────────
   const winOf = (e: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)
@@ -114,6 +122,15 @@ export function registerIpc(): void {
   ipcMain.handle('project:reveal', (_e, slug: string, file: string) =>
     shell.showItemInFolder(path.join(projectDir(slug), file))
   )
+
+  // ── timeline editor ─────────────────────────────────────────────────────────
+  ipcMain.handle('timeline:get', (_e, slug: string) => getTimeline(slug))
+  ipcMain.handle('timeline:save', (_e, slug: string, data: TimelineData) => saveTimeline(slug, data))
+  ipcMain.handle('timeline:reset', (_e, slug: string) => resetTimeline(slug))
+  ipcMain.handle('timeline:render', async (e, slug: string, opts: RenderTimelineOpts) => {
+    const r = await renderTimeline(slug, opts, (line) => e.sender.send('timeline:log', line))
+    return r
+  })
 
   // ── pipeline ───────────────────────────────────────────────────────────────
   ipcMain.handle('pipeline:stages', () => STAGES)

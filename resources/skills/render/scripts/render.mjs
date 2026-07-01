@@ -39,6 +39,8 @@ function parseArgs(argv) {
     crf: 18,
     preset: "medium",
     dryRun: false,
+    emitTimes: null,    // write the computed per-image timings as JSON, then exit (no render)
+    times: null,        // read explicit per-image start times from a JSON timeline (disables --align)
   };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
@@ -63,6 +65,8 @@ function parseArgs(argv) {
       case "--crf": a.crf = Number(next()); break;
       case "--preset": a.preset = next(); break;
       case "--dry-run": a.dryRun = true; break;
+      case "--emit-times": a.emitTimes = next(); break;
+      case "--times": a.times = next(); break;
       case "--help": case "-h": a.help = true; break;
       default:
         if (!a.images && !k.startsWith("-")) a.images = k;
@@ -198,14 +202,27 @@ async function main() {
     console.error(`Error: images dir not found: ${imagesDir}`); process.exit(1);
   }
 
-  // Collect + time-sort images
-  const imgs = fs.readdirSync(imagesDir)
-    .filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
-    .map((f) => ({ file: path.join(imagesDir, f), ts: tsFromName(f) }))
-    .filter((x) => x.ts !== null)
-    .sort((a, b) => a.ts - b.ts);
-  if (!imgs.length) {
-    console.error(`Error: no timestamp-named images (e.g. 00_06.png) found in ${imagesDir}`); process.exit(1);
+  // Explicit timeline (from the app's timeline editor): fixed per-image starts.
+  let fixedStarts = null;
+  let imgs;
+  if (args.times) {
+    const tj = JSON.parse(fs.readFileSync(path.resolve(args.times), "utf8"));
+    imgs = (tj.clips || [])
+      .map((c) => ({ file: path.join(imagesDir, c.file), ts: Number(c.start) || 0 }))
+      .filter((x) => fs.existsSync(x.file))
+      .sort((a, b) => a.ts - b.ts);
+    fixedStarts = imgs.map((x) => x.ts);
+    if (!imgs.length) { console.error(`Error: no images from timeline ${args.times} exist in ${imagesDir}`); process.exit(1); }
+  } else {
+    // Collect + time-sort images by filename timestamp (mm_ss)
+    imgs = fs.readdirSync(imagesDir)
+      .filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
+      .map((f) => ({ file: path.join(imagesDir, f), ts: tsFromName(f) }))
+      .filter((x) => x.ts !== null)
+      .sort((a, b) => a.ts - b.ts);
+    if (!imgs.length) {
+      console.error(`Error: no timestamp-named images (e.g. 00_06.png) found in ${imagesDir}`); process.exit(1);
+    }
   }
 
   // Resolve audio (explicit, else auto-detect one audio file near images/cwd)
@@ -232,7 +249,8 @@ async function main() {
   // timestamps (mm_ss), which makes cuts land up to ~1s before the spoken line.
   // Snap each cut to the nearest transcript cue start to recover real timing.
   let alignSrt = null;
-  if (args.align === false) alignSrt = null;                 // explicitly disabled
+  if (fixedStarts) alignSrt = null;                          // explicit timeline overrides alignment
+  else if (args.align === false) alignSrt = null;            // explicitly disabled
   else if (typeof args.align === "string") alignSrt = path.resolve(args.align);
   else if (project) {                                        // auto in project mode
     const hit = findIn(project.root, /\.srt$/i).find((f) => f.startsWith(project.slug))
@@ -257,7 +275,7 @@ async function main() {
   let aligned = 0, shiftSum = 0, breathed = 0, breathSum = 0;
   const starts = [];
   for (let i = 0; i < imgs.length; i++) {
-    let s = i === 0 ? 0 : imgs[i].ts;
+    let s = fixedStarts ? fixedStarts[i] : (i === 0 ? 0 : imgs[i].ts);
     let snapped = false;
     if (i > 0 && cueStarts.length) {
       let best = null, bd = Infinity;
@@ -287,6 +305,22 @@ async function main() {
   // Guard against bad/zero/negative durations (e.g. audio shorter than last ts).
   for (let i = 0; i < durations.length; i++) {
     if (!(durations[i] > 0.05)) durations[i] = 0.5;
+  }
+
+  // Emit the computed timeline (for the app's timeline editor) and exit.
+  if (args.emitTimes) {
+    const payload = {
+      audio: path.basename(audio),
+      audioDur,
+      clips: imgs.map((x, i) => ({
+        file: path.basename(x.file),
+        start: +starts[i].toFixed(3),
+        dur: +durations[i].toFixed(3),
+      })),
+    };
+    fs.writeFileSync(path.resolve(args.emitTimes), JSON.stringify(payload, null, 2));
+    log(`Wrote timeline (${imgs.length} clips) to ${args.emitTimes}`);
+    return;
   }
 
   const [W, H] = args.size.split("x").map((n) => parseInt(n, 10));

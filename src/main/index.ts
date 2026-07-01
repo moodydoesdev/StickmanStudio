@@ -3,6 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadConfig, runNameMigration } from './lib/config'
 import { activateRuntime } from './lib/runtime'
+import { startUpdater } from './lib/updater'
 import { registerIpc } from './ipc'
 
 // Serve project media (images, mp4) to the renderer without exposing the FS.
@@ -89,6 +90,7 @@ app.whenReady().then(() => {
   registerMediaProtocol()
   registerIpc()
   createWindow()
+  startUpdater() // check GitHub Releases for a newer build (packaged app only)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
