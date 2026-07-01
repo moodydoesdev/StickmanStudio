@@ -1,0 +1,9 @@
+# One line per image:  <timestamp> | <prompt>
+# Lines starting with # are ignored.
+# Optional folder name (otherwise the file name is used):
+video: my-first-explainer
+
+00:00 | a stickman waving hello, white background, minimal line art
+00:12 | a stickman running to the right, motion lines, white background
+00:25 | a stickman tripping over a rock, comic style, white background
+00:38 | a stickman celebrating with arms up, confetti, white background

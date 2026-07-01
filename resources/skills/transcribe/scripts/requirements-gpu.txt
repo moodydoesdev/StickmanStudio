@@ -1,0 +1,10 @@
+# Experimental GPU stack pinned to the cuDNN-8 era to dodge the
+# CTranslate2 4.8 + cuDNN 9 first-inference deadlock on Windows (RTX 3070).
+# Used by .venv-gpu only; the default .venv (CPU) keeps the newer stack.
+ctranslate2==4.4.0
+faster-whisper==1.0.3
+nvidia-cublas-cu12==12.4.5.8
+nvidia-cudnn-cu12==8.9.7.29
+# faster-whisper 1.0.3 still does `import requests`; modern huggingface_hub
+# (1.x) dropped it as a dependency, so add it back explicitly.
+requests

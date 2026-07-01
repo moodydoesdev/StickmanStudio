@@ -1,0 +1,57 @@
+appId: com.stickmanstudio.app
+productName: Stickman Studio
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: dist
+
+# Ship the Claude Code skills inside the app so the install wizard can copy them
+# into ~/.claude/skills on first run. Heavy deps (ffmpeg, python venv, the CLIs)
+# are installed by the first-run wizard, not bundled, to keep the download small.
+extraResources:
+  - from: resources/skills
+    to: skills
+    filter:
+      - "**/*"
+
+files:
+  - "out/**/*"
+  - "package.json"
+  - "!**/.vscode/*"
+  - "!**/*.map"
+
+asarUnpack:
+  - "resources/**"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-Setup-${version}.${ext}
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Stickman Studio
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.video
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # The app shells out to node/python/ffmpeg/claude, so it needs an unsandboxed,
+  # hardened-runtime build. Provide signing identity via CSC_LINK env at build time.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish: null

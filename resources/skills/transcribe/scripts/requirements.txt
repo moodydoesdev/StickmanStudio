@@ -1,0 +1,7 @@
+# Core engine (CTranslate2 under the hood — far lighter on VRAM than openai-whisper)
+faster-whisper>=1.1.0
+
+# GPU (CUDA 12) runtime libs as pip wheels, so no manual CUDA/cuDNN install.
+# These are unused on CPU-only machines (safe to skip there to save ~1 GB).
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
