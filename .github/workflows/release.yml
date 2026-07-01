@@ -1,0 +1,49 @@
+name: Release
+
+# Build Windows + macOS installers and attach them to a GitHub Release.
+# Trigger by pushing a version tag, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+# (make sure package.json "version" matches the tag). Also runnable manually.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the release + upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: '--win'
+          - os: macos-latest
+            target: '--mac'
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Package & publish installer
+        run: npx --no-install electron-builder ${{ matrix.target }} --config electron-builder.yml --publish always
+        env:
+          # electron-builder uploads to the GitHub Release using this token.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No Apple signing cert in CI → build an unsigned .dmg instead of failing.
+          CSC_IDENTITY_AUTO_DISCOVERY: false

@@ -54,4 +54,9 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
-publish: null
+publish:
+  provider: github
+  owner: moodydoesdev
+  repo: StickmanStudio
+  # Assets upload to a draft release named after the version; publish it when ready.
+  releaseType: draft
