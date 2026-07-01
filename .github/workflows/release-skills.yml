@@ -1,0 +1,39 @@
+name: Release Skills
+
+# Package the Claude-app-compatible skills (scripts/package-skills.py) and
+# attach the zips to the rolling "skills" GitHub Release, so anyone — including
+# free-plan Claude users — can download one and upload it in the Claude apps.
+#
+# The release uses a non-semver tag and is marked prerelease so the desktop
+# app's auto-updater (which watches the v* releases) never picks it up.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'resources/skills/**'
+      - 'scripts/package-skills.py'
+      - '.github/workflows/release-skills.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/update the release + upload assets
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package skills
+        run: python3 scripts/package-skills.py
+
+      - name: Upload to the rolling "skills" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view skills --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create skills --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Claude app skills (latest)" \
+              --notes "Skill packages for the Claude apps (works on the free plan). In Claude: Settings -> Capabilities -> Skills -> enable code execution -> Upload skill -> pick a zip."
+          gh release upload skills dist/skills/*.zip --repo "$GITHUB_REPOSITORY" --clobber
