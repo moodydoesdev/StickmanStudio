@@ -127,8 +127,8 @@ If no transcript is available, say so and ask for it — do **not** invent times
    - Format like: `Topic: Author, Year (Venue). "Title"`.
 
 8. **Related-video line.** Output the editable end-screen/card link line
-   `   • <title>` using `--related` if given, else a placeholder
-   `   • <add a related video title here>` for the user to fill in.
+   `   • <title>` using `--related` if given, else exactly the placeholder
+   `   • [Add a related video here]` for the user to fill in.
 
 9. **Hashtags.** 4-6 relevant tags derived from the topic, ending with your channel
    tag (replace the `#YourChannel` placeholder with the real one), e.g.

@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { shell } from 'electron'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { VideoArtifacts, VideoProject } from '../../shared/types'
 import { ensureVideosDir, loadConfig } from './config'
@@ -54,15 +55,18 @@ export function scanProjects(): VideoProject[] {
     } catch {
       continue
     }
-    // Only surface folders that look like a video project.
+    // Only surface folders that look like a video project. A just-started
+    // project can look empty when the volume's directory listing lags behind
+    // writes (pooled drives) — keep recently touched folders visible anyway.
     const a = info.artifacts
+    const modifiedAt = statSync(dir).mtimeMs
     const looksReal = a.script || a.audio || a.images > 0 || a.video || a.srt
-    if (!looksReal) continue
+    if (!looksReal && Date.now() - modifiedAt > 15 * 60_000) continue
     out.push({
       slug,
       dir,
       title: firstLine(path.join(dir, `${slug}.title.txt`)),
-      modifiedAt: statSync(dir).mtimeMs,
+      modifiedAt,
       artifacts: a,
       poster: info.poster,
       videoFile: info.videoFile
@@ -73,6 +77,29 @@ export function scanProjects(): VideoProject[] {
 
 export function getProject(slug: string): VideoProject | null {
   return scanProjects().find((p) => p.slug === slug) || null
+}
+
+/** Move a project folder to the system trash (Recycle Bin); permanent delete
+ *  only as a fallback for volumes without one. */
+export async function deleteProject(slug: string): Promise<{ ok: boolean; error?: string }> {
+  const root = path.resolve(loadConfig().videosDir)
+  const dir = path.resolve(root, slug)
+  // The folder must be a direct child of the videos dir — nothing else is deletable.
+  const rel = path.relative(root, dir)
+  if (!rel || rel.startsWith('..') || /[\\/]/.test(rel)) {
+    return { ok: false, error: `Not a project folder: ${slug}` }
+  }
+  if (!existsSync(dir)) return { ok: false, error: 'Project folder not found.' }
+  try {
+    await shell.trashItem(dir)
+  } catch {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Could not delete the folder.' }
+    }
+  }
+  return { ok: true }
 }
 
 export type ArtifactKind = 'script' | 'title' | 'description' | 'prompts' | 'srt'

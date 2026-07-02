@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Check, Play } from '@phosphor-icons/react'
+import { ArrowLeft, Check, Play, Trash } from '@phosphor-icons/react'
 import type { AppConfig, StageId, StageInfo, VideoProject } from '../../../shared/types'
 import { RunConsole, StageTracker, useRun } from '../components/Run'
 import { Timeline } from '../components/Timeline'
@@ -23,6 +23,7 @@ export function VideoDetail({ slug, config, onBack, refresh }: Props): JSX.Eleme
   const [stageToRun, setStageToRun] = useState<StageId>('narrate')
   const [srtOpen, setSrtOpen] = useState(false)
   const [srtDraft, setSrtDraft] = useState('')
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setProject(await window.api.getProject(slug))
@@ -62,7 +63,24 @@ export function VideoDetail({ slug, config, onBack, refresh }: Props): JSX.Eleme
         <button className="btn" onClick={() => window.api.openFolder(slug)}>
           Open folder
         </button>
+        <button
+          className="btn danger"
+          title="Delete this video"
+          onClick={async () => {
+            const r = await window.api.deleteProject(slug)
+            if (r.ok) {
+              await refresh()
+              onBack()
+            } else if (!r.canceled) {
+              setDeleteError(r.error || 'Could not delete the project.')
+            }
+          }}
+        >
+          <Trash size={15} /> Delete
+        </button>
       </div>
+
+      {deleteError && <div className="banner warn" style={{ marginBottom: 18 }}>{deleteError}</div>}
 
       <div className="seg" style={{ marginBottom: 18 }}>
         {(['overview', 'script', 'images', ...(a.audio && a.images > 0 ? (['timeline'] as Tab[]) : []), 'description'] as Tab[]).map(

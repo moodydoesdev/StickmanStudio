@@ -1,4 +1,5 @@
-import { FilmSlate, FilmStrip, Sparkle } from '@phosphor-icons/react'
+import { useState } from 'react'
+import { FilmSlate, FilmStrip, Sparkle, Trash } from '@phosphor-icons/react'
 import type { VideoProject } from '../../../shared/types'
 
 interface Props {
@@ -11,6 +12,16 @@ interface Props {
 }
 
 export function Library({ projects, ready, refresh, onOpen, onNew, onSetup }: Props): JSX.Element {
+  const [error, setError] = useState<string | null>(null)
+  const del = async (slug: string) => {
+    const r = await window.api.deleteProject(slug)
+    if (r.ok) {
+      setError(null)
+      await refresh()
+    } else if (!r.canceled) {
+      setError(r.error || 'Could not delete the project.')
+    }
+  }
   return (
     <div>
       <div className="page-head">
@@ -26,6 +37,8 @@ export function Library({ projects, ready, refresh, onOpen, onNew, onSetup }: Pr
           <Sparkle size={16} weight="fill" /> New Video
         </button>
       </div>
+
+      {error && <div className="banner warn" style={{ marginBottom: 18 }}>{error}</div>}
 
       {!ready && (
         <div className="banner warn" style={{ marginBottom: 18 }}>
@@ -48,7 +61,7 @@ export function Library({ projects, ready, refresh, onOpen, onNew, onSetup }: Pr
       ) : (
         <div className="grid">
           {projects.map((p) => (
-            <VideoCard key={p.slug} p={p} onOpen={() => onOpen(p.slug)} />
+            <VideoCard key={p.slug} p={p} onOpen={() => onOpen(p.slug)} onDelete={() => del(p.slug)} />
           ))}
         </div>
       )}
@@ -56,11 +69,21 @@ export function Library({ projects, ready, refresh, onOpen, onNew, onSetup }: Pr
   )
 }
 
-function VideoCard({ p, onOpen }: { p: VideoProject; onOpen: () => void }): JSX.Element {
+function VideoCard({ p, onOpen, onDelete }: { p: VideoProject; onOpen: () => void; onDelete: () => void }): JSX.Element {
   const a = p.artifacts
   const chip = (on: boolean, label: string) => <span className={`chip ${on ? 'on' : ''}`}>{label}</span>
   return (
     <div className="card" onClick={onOpen}>
+      <button
+        className="del"
+        title="Delete this video"
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete()
+        }}
+      >
+        <Trash size={14} />
+      </button>
       <div className="thumb">
         {p.poster ? (
           <img src={`media://${encodeURIComponent(p.slug)}/${encodeURIComponent(p.poster)}`} alt={p.slug} />

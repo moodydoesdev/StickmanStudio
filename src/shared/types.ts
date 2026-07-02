@@ -96,6 +96,9 @@ export interface AppConfig {
   /** Friendly name of the selected voice (shown in the UI instead of the id). */
   voiceName?: string
   defaults: VideoDefaults
+  /** Model for the Claude stages — an alias (sonnet/opus/haiku) or a full
+   *  model id. Empty/unset = let the Claude CLI pick its default. */
+  claudeModel?: string
   /** Use the NVIDIA GPU for transcription (faster). Off = CPU, works anywhere. */
   useGpu: boolean
   /** Set true once the first-run wizard has been completed. */

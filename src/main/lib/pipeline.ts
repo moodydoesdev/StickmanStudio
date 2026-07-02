@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { NewVideoRequest, RunEvent, StageId, StageInfo, VideoDefaults } from '../../shared/types'
 import { childEnv, ensureVideosDir, loadConfig } from './config'
@@ -76,15 +76,77 @@ export function planStages(req: NewVideoRequest): StageId[] {
 
 // ── Stage commands ──────────────────────────────────────────────────────────
 
-function claudeArgs(prompt: string): string[] {
-  return [
+function claudeArgs(prompt: string, model?: string): string[] {
+  const args = [
     '-p',
     prompt,
     '--permission-mode',
     'bypassPermissions',
     '--add-dir',
-    claudeSkillsDir()
+    claudeSkillsDir(),
+    // Emit one JSON event per step so the console can show live progress —
+    // plain -p prints nothing at all until the very end of the stage.
+    '--output-format',
+    'stream-json',
+    '--verbose'
   ]
+  if (model) args.push('--model', model)
+  return args
+}
+
+/** Compact one-line summary of a tool call's most telling input field. */
+function summarizeInput(input: unknown): string {
+  if (!input || typeof input !== 'object') return ''
+  const i = input as Record<string, unknown>
+  const v = [i.query, i.url, i.file_path, i.command, i.skill, i.pattern, i.description].find(
+    (x): x is string => typeof x === 'string' && !!x.trim()
+  )
+  if (!v) return ''
+  const s = v.replace(/\s+/g, ' ').trim()
+  return `  ${s.length > 120 ? s.slice(0, 120) + '…' : s}`
+}
+
+/**
+ * Pretty-print one `--output-format stream-json` event for the run console.
+ * null = not JSON (pass the raw line through); [] = known but boring (drop).
+ */
+function formatClaudeEvent(line: string): string[] | null {
+  if (!line.startsWith('{')) return null
+  let ev: any
+  try {
+    ev = JSON.parse(line)
+  } catch {
+    return null
+  }
+  switch (ev.type) {
+    case 'system':
+      return ev.subtype === 'init' && ev.model ? [`Claude session started (${ev.model})`] : []
+    case 'assistant': {
+      const out: string[] = []
+      for (const c of ev.message?.content ?? []) {
+        if (c.type === 'text' && c.text?.trim()) out.push(...c.text.trim().split('\n'))
+        else if (c.type === 'tool_use') out.push(`→ ${c.name}${summarizeInput(c.input)}`)
+      }
+      return out
+    }
+    case 'user': {
+      // Only surface failed tool results; successes are noise.
+      const out: string[] = []
+      for (const c of ev.message?.content ?? []) {
+        if (c.type === 'tool_result' && c.is_error) {
+          const text = typeof c.content === 'string' ? c.content : c.content?.[0]?.text || 'tool failed'
+          out.push(`✗ ${String(text).split('\n')[0].slice(0, 200)}`)
+        }
+      }
+      return out
+    }
+    case 'result': {
+      const secs = typeof ev.duration_ms === 'number' ? ` in ${Math.round(ev.duration_ms / 1000)}s` : ''
+      return ev.is_error ? [`✗ Claude finished with an error${secs}`] : [`✓ Claude finished${secs}`]
+    }
+    default:
+      return []
+  }
 }
 
 const HEADLESS =
@@ -107,54 +169,143 @@ function buildStage(rec: RunRecord, stage: StageId): { cmd: string; args: string
             ? 'Target an extended piece (~120-180 beats).'
             : 'Target ~60-100 beats (7-10 min).'
       const prompt = `${HEADLESS} Use the research-video skill to research the topic "${rec.req.topic}" and write a beat-disciplined narration script (one sentence = one visual beat) to the file "${slug}/${slug}.script.txt". ${lenNote} End with the channel outro. Also choose the single strongest title and save it (one line) to "${slug}/${slug}.title.txt". Create the "${slug}" folder if needed. When finished, print DONE.`
-      return { cmd: 'claude', args: claudeArgs(prompt), cwd: videos }
+      return { cmd: 'claude', args: claudeArgs(prompt, cfg.claudeModel), cwd: videos }
     }
+    // Note: the helper scripts' --project mode assumes a nested layout
+    // (<project>/script/, audio/, images/ …) while the app keeps every video
+    // as ONE FLAT folder — so always pass explicit input/output paths instead.
     case 'narrate': {
       const voice = cfg.voiceId
       if (!voice) throw new Error('No ElevenLabs voice ID set — add one in Settings before narrating.')
-      const args = [skillScript(skills, 'narrate', 'narrate.mjs'), '--project', slug, '--voice', voice]
+      const args = [
+        skillScript(skills, 'narrate', 'narrate.mjs'),
+        '--input',
+        `${slug}/${slug}.script.txt`,
+        '--out',
+        `${slug}/${slug}.mp3`,
+        '--voice',
+        voice
+      ]
       return { cmd: node, args, cwd: videos }
     }
     case 'transcribe': {
       const venvPy = whisperVenvPython()
       if (!existsSync(venvPy)) throw new Error('Transcription engine not installed — run Setup to install the whisper venv.')
-      const args = [skillScript(skills, 'transcribe', 'transcribe.py'), '--project', slug]
+      const args = [
+        skillScript(skills, 'transcribe', 'transcribe.py'),
+        `${slug}/${slug}.mp3`,
+        '--out',
+        `${slug}/${slug}.srt`
+      ]
       if (cfg.useGpu) args.push('--device', 'cuda')
       return { cmd: venvPy, args, cwd: videos }
     }
     case 'image-prompts': {
       const vNote = vertical ? ' Use vertical (9:16) framing notes.' : ''
       const prompt = `${HEADLESS} Use the video-image-prompts skill: parse "${slug}/${slug}.srt" into beats, prepend the verbatim house STYLE PREFIX from the skill's base-style.md, and write exactly one prompt per beat to "${slug}/${slug}.prompts.txt" (format: a first line "video: ${slug}" then "MM:SS | prompt" lines).${vNote} When finished, print DONE.`
-      return { cmd: 'claude', args: claudeArgs(prompt), cwd: videos }
+      return { cmd: 'claude', args: claudeArgs(prompt, cfg.claudeModel), cwd: videos }
     }
     case 'images': {
+      // The prompts file starts with "video: <slug>", so --out . drops the
+      // images straight into the flat <slug>/ folder.
       const args = [
         skillScript(skills, 'chatgpt-images', 'generate.mjs'),
-        '--project',
-        slug,
+        '--input',
+        `${slug}/${slug}.prompts.txt`,
+        '--out',
+        '.',
         '--size',
         sizeForImages(length, vertical)
       ]
       return { cmd: node, args, cwd: videos }
     }
     case 'render': {
-      const args = [skillScript(skills, 'render', 'render.mjs'), '--project', slug, '--size', sizeForRender(vertical)]
+      const args = [
+        skillScript(skills, 'render', 'render.mjs'),
+        '--audio',
+        `${slug}/${slug}.mp3`,
+        '--images',
+        slug,
+        '--out',
+        `${slug}/${slug}.mp4`,
+        '--size',
+        sizeForRender(vertical)
+      ]
       if (captions) args.push('--captions', `${slug}/${slug}.srt`)
       return { cmd: node, args, cwd: videos }
     }
     case 'description': {
-      const prompt = `${HEADLESS} Use the description skill: read "${slug}/${slug}.script.txt", "${slug}/${slug}.title.txt" and "${slug}/${slug}.srt", and write a full YouTube description with chapters built from the real beat timings to "${slug}/${slug}.description.txt". Don't fabricate sources. When finished, print DONE.`
-      return { cmd: 'claude', args: claudeArgs(prompt), cwd: videos }
+      const prompt = `${HEADLESS} Use the description skill: read "${slug}/${slug}.script.txt", "${slug}/${slug}.title.txt" and "${slug}/${slug}.srt", and write a full YouTube description with chapters built from the real beat timings to "${slug}/${slug}.description.txt". Don't fabricate sources. For the related-video line use exactly the placeholder "   • [Add a related video here]". No channel-specific branding or hashtags (e.g. #TheRichards) — the file must be generic to this video. When finished, print DONE.`
+      return { cmd: 'claude', args: claudeArgs(prompt, cfg.claudeModel), cwd: videos }
     }
     case 'thumbnail': {
       const size = vertical ? '720x1280' : '1280x720'
-      const prompt = `${HEADLESS} Use the thumbnail skill: compose 3 bold thumbnail prompt variations (verbatim house STYLE PREFIX + thumbnail composition + the title from "${slug}/${slug}.title.txt"), write them to "${slug}/${slug}.thumb-prompts.txt", then generate them by running: node "${skillScript(skills, 'chatgpt-images', 'generate.mjs')}" --project "${slug}" --input "${slug}/${slug}.thumb-prompts.txt" --name-prefix "${slug}.thumb-" --size ${size} --quality high. When finished, print DONE.`
-      return { cmd: 'claude', args: claudeArgs(prompt), cwd: videos }
+      const prompt = `${HEADLESS} Use the thumbnail skill: compose 3 bold thumbnail prompt variations (verbatim house STYLE PREFIX + thumbnail composition + the title from "${slug}/${slug}.title.txt"), write them to "${slug}/${slug}.thumb-prompts.txt" with its first line exactly "video: ${slug}", then generate them by running: node "${skillScript(skills, 'chatgpt-images', 'generate.mjs')}" --input "${slug}/${slug}.thumb-prompts.txt" --out . --name-prefix "${slug}.thumb-" --size ${size} --quality high. When finished, print DONE.`
+      return { cmd: 'claude', args: claudeArgs(prompt, cfg.claudeModel), cwd: videos }
     }
   }
 }
 
 // ── Execution loop ──────────────────────────────────────────────────────────
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Beats in prompts.txt (one "MM:SS | prompt" line each), or 0 if unreadable. */
+function expectedImages(slug: string): number {
+  try {
+    const file = path.join(ensureVideosDir(), slug, `${slug}.prompts.txt`)
+    return readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((l) => /^\d{1,2}:\d{2}\s*\|/.test(l)).length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Pooled/cached volumes (DrivePool and friends) can lag directory listings
+ * minutes behind writes, so a finished stage's files may not be visible to
+ * the next process (or the library scan) yet. Poll until they show up.
+ */
+async function waitForArtifact(rec: RunRecord, stage: StageId): Promise<void> {
+  const visible = () => {
+    if (!satisfied(rec.slug).has(stage)) return false
+    // Images arrive one file at a time — wait for the whole set, not just one.
+    if (stage === 'images') {
+      const have = getProject(rec.slug)?.artifacts.images ?? 0
+      return have >= expectedImages(rec.slug)
+    }
+    return true
+  }
+  const deadline = Date.now() + 180_000
+  let waited = false
+  while (!visible()) {
+    if (rec.canceled) return
+    if (Date.now() > deadline) {
+      rec.emit({
+        type: 'log',
+        runId: rec.runId,
+        stage,
+        stream: 'stderr',
+        line: `warning: ${stage} finished but its files are still not visible on disk after 3 minutes — continuing anyway.`
+      })
+      return
+    }
+    if (!waited) {
+      waited = true
+      rec.emit({
+        type: 'log',
+        runId: rec.runId,
+        stage,
+        stream: 'stdout',
+        line: 'Waiting for the written files to appear on disk (slow volume)…'
+      })
+    }
+    await sleep(2000)
+  }
+}
 
 async function execFrom(rec: RunRecord): Promise<void> {
   const env = childEnv()
@@ -175,10 +326,20 @@ async function execFrom(rec: RunRecord): Promise<void> {
       return
     }
 
+    const isLlm = STAGES.find((s) => s.id === stage)?.kind === 'llm'
     const managed = runManaged(plan.cmd, plan.args, {
       cwd: plan.cwd,
       env,
-      onLine: (stream, line) => rec.emit({ type: 'log', runId: rec.runId, stage, stream, line })
+      onLine: (stream, line) => {
+        if (isLlm && stream === 'stdout') {
+          const pretty = formatClaudeEvent(line)
+          if (pretty) {
+            for (const l of pretty) rec.emit({ type: 'log', runId: rec.runId, stage, stream, line: l })
+            return
+          }
+        }
+        rec.emit({ type: 'log', runId: rec.runId, stage, stream, line })
+      }
     })
     rec.managed = managed
     let result
@@ -206,6 +367,12 @@ async function execFrom(rec: RunRecord): Promise<void> {
         stage,
         message: `${stage} failed (exit ${result.code}). ${result.stderr.split('\n').slice(-3).join(' ').trim()}`
       })
+      RUNS.delete(rec.runId)
+      return
+    }
+    await waitForArtifact(rec, stage)
+    if (rec.canceled) {
+      rec.emit({ type: 'canceled', runId: rec.runId })
       RUNS.delete(rec.runId)
       return
     }
@@ -274,6 +441,27 @@ export function resumeRun(runId: string): boolean {
   if (!rec) return false
   void execFrom(rec)
   return true
+}
+
+export function hasActiveRun(slug: string): boolean {
+  for (const rec of RUNS.values()) if (rec.slug === slug && !rec.canceled) return true
+  return false
+}
+
+/** Cancel every run for a slug (e.g. before deleting the project). */
+export function cancelRunsForSlug(slug: string): void {
+  for (const [runId, rec] of RUNS) {
+    if (rec.slug !== slug || rec.canceled) continue
+    rec.canceled = true
+    if (rec.managed) {
+      // A stage is executing: kill it and let execFrom emit canceled + clean up.
+      rec.managed.cancel()
+    } else {
+      // Paused (waiting for resume): nothing is running, clean up here.
+      rec.emit({ type: 'canceled', runId })
+      RUNS.delete(runId)
+    }
+  }
 }
 
 export function cancelRun(runId: string): boolean {

@@ -7,8 +7,8 @@ import { loadConfig, saveConfig } from './lib/config'
 import { addVoice, listVoices, searchVoices } from './lib/elevenlabs'
 import { runDoctor } from './lib/doctor'
 import { INSTALL_ORDER, installDependency } from './lib/installers'
-import { cancelRun, planStages, resumeRun, startRun, STAGES } from './lib/pipeline'
-import { getProject, listImages, projectDir, readArtifact, scanProjects, type ArtifactKind } from './lib/projects'
+import { cancelRun, cancelRunsForSlug, hasActiveRun, planStages, resumeRun, startRun, STAGES } from './lib/pipeline'
+import { deleteProject, getProject, listImages, projectDir, readArtifact, scanProjects, type ArtifactKind } from './lib/projects'
 import { getTimeline, renderTimeline, resetTimeline, saveTimeline, type RenderTimelineOpts, type TimelineData } from './lib/timeline'
 import { checkForUpdates, getUpdateStatus, installUpdateNow } from './lib/updater'
 
@@ -116,6 +116,35 @@ export function registerIpc(): void {
     mkdirSync(dir, { recursive: true })
     copyFileSync(res.filePaths[0], path.join(dir, `${slug}.srt`))
     return true
+  })
+
+  ipcMain.handle('project:delete', async (_e, slug: string) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+    const trash = process.platform === 'darwin' ? 'Trash' : 'Recycle Bin'
+    const title = getProject(slug)?.title || slug
+    const active = hasActiveRun(slug)
+    const res = await dialog.showMessageBox(win!, {
+      type: 'warning',
+      buttons: [active ? 'Cancel run & delete' : 'Delete', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Delete “${title}”?`,
+      detail:
+        (active ? 'A run is in progress for this video — it will be canceled. ' : '') +
+        `The whole project folder — script, narration, images and video — will be moved to the ${trash}.`
+    })
+    if (res.response !== 0) return { ok: false, canceled: true }
+    if (active) {
+      cancelRunsForSlug(slug)
+      // Give the killed process tree a moment to release its file locks.
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+    let result = await deleteProject(slug)
+    if (!result.ok && active) {
+      await new Promise((r) => setTimeout(r, 2000))
+      result = await deleteProject(slug)
+    }
+    return result
   })
 
   ipcMain.handle('project:open-folder', (_e, slug: string) => shell.openPath(projectDir(slug)))

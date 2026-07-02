@@ -18,6 +18,10 @@ export function Settings({ config, saveConfig }: Props): JSX.Element {
   const [defaults, setDefaults] = useState<VideoDefaults>(config.defaults)
   const [useGpu, setUseGpu] = useState(config.useGpu)
   const [saved, setSaved] = useState(false)
+  const knownModels = ['', 'sonnet', 'opus', 'haiku']
+  const initialModel = config.claudeModel || ''
+  const [modelChoice, setModelChoice] = useState(knownModels.includes(initialModel) ? initialModel : 'custom')
+  const [customModel, setCustomModel] = useState(knownModels.includes(initialModel) ? '' : initialModel)
 
   async function pickFolder(): Promise<void> {
     const dir = await window.api.pickFolder()
@@ -33,6 +37,7 @@ export function Settings({ config, saveConfig }: Props): JSX.Element {
       voiceName: voiceName.trim() || undefined,
       anthropicApiKey: anthropicKey.trim() || undefined,
       defaults,
+      claudeModel: (modelChoice === 'custom' ? customModel.trim() : modelChoice) || undefined,
       useGpu
     })
     setSaved(true)
@@ -142,6 +147,37 @@ export function Settings({ config, saveConfig }: Props): JSX.Element {
               />{' '}
               Burn captions
             </label>
+          </div>
+        </div>
+
+        <div className="panel col">
+          <h3 style={{ margin: 0 }}>Claude model</h3>
+          <div className="row">
+            <label className="field" style={{ flex: 1 }}>
+              Model for the Claude stages (script, image prompts, description, thumbnail)
+              <select value={modelChoice} onChange={(e) => setModelChoice(e.target.value)}>
+                <option value="">Default — let Claude Code pick</option>
+                <option value="sonnet">Sonnet — fast, great quality</option>
+                <option value="opus">Opus — most capable, slower</option>
+                <option value="haiku">Haiku — fastest, lightest</option>
+                <option value="custom">Custom model id…</option>
+              </select>
+            </label>
+            {modelChoice === 'custom' && (
+              <label className="field" style={{ flex: 1 }}>
+                Model id
+                <input
+                  type="text"
+                  placeholder="e.g. claude-sonnet-5"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                />
+              </label>
+            )}
+          </div>
+          <div className="sub">
+            On a Pro/Max sign-in, heavier models use up your plan’s usage faster; with an API key they bill at that
+            model’s rates.
           </div>
         </div>
 

@@ -85,6 +85,8 @@ const api = {
   saveScript: (slug: string, text: string): Promise<boolean> => ipcRenderer.invoke('project:save-script', slug, text),
   saveSrt: (slug: string, text: string): Promise<boolean> => ipcRenderer.invoke('project:save-srt', slug, text),
   importSrt: (slug: string): Promise<boolean> => ipcRenderer.invoke('project:import-srt', slug),
+  deleteProject: (slug: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('project:delete', slug),
   openFolder: (slug: string): Promise<string> => ipcRenderer.invoke('project:open-folder', slug),
   reveal: (slug: string, file: string): Promise<void> => ipcRenderer.invoke('project:reveal', slug, file),
 

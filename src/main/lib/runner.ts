@@ -85,7 +85,10 @@ export function runManaged(cmd: string, args: string[], opts: RunOptions = {}): 
     cwd: opts.cwd,
     env: opts.env || process.env,
     windowsHide: true,
-    shell: false
+    shell: false,
+    // stdin 'ignore': nothing is ever piped to children, and an open stdin
+    // pipe makes the Claude CLI wait 3s for input on every LLM stage.
+    stdio: ['ignore', 'pipe', 'pipe']
   })
 
   let stdout = ''

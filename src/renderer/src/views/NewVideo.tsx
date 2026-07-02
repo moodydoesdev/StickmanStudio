@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Play } from '@phosphor-icons/react'
-import type { AppConfig, StageInfo, TranscriptionMode, VideoDefaults } from '../../../shared/types'
+import { ArrowCounterClockwise, Play } from '@phosphor-icons/react'
+import type { AppConfig, StageId, StageInfo, TranscriptionMode, VideoDefaults } from '../../../shared/types'
 import { RunConsole, StageTracker, useRun } from '../components/Run'
 
 interface Props {
@@ -22,6 +22,7 @@ export function NewVideo({ config, ready, onSetup, onCreated }: Props): JSX.Elem
   const [scriptDraft, setScriptDraft] = useState('')
   const [srtDraft, setSrtDraft] = useState('')
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
+  const [retryStage, setRetryStage] = useState<StageId | ''>('')
 
   const ctl = useRun()
 
@@ -50,7 +51,23 @@ export function NewVideo({ config, ready, onSetup, onCreated }: Props): JSX.Elem
   async function start(): Promise<void> {
     const s = derivedSlug()
     setActiveSlug(s)
+    setRetryStage('')
     await ctl.start({ topic: topic.trim(), slug: s, length, vertical, captions, transcription, pauseAfterScript: pause })
+  }
+
+  async function retryFrom(stage: StageId): Promise<void> {
+    if (!activeSlug) return
+    setRetryStage('')
+    await ctl.start({
+      topic: topic.trim() || activeSlug,
+      slug: activeSlug,
+      length,
+      vertical,
+      captions,
+      transcription,
+      pauseAfterScript: pause && stage === 'research',
+      startStage: stage
+    })
   }
 
   async function approveScript(saveEdits: boolean): Promise<void> {
@@ -71,6 +88,8 @@ export function NewVideo({ config, ready, onSetup, onCreated }: Props): JSX.Elem
 
   const running = ctl.status === 'running'
   const idle = ctl.status === 'idle'
+  // Default the retry picker to whichever stage broke (else the run's first stage).
+  const failedStage: StageId = ctl.stages.find((s) => ctl.stageStatus[s] === 'error') || ctl.stages[0] || 'research'
 
   return (
     <div>
@@ -236,6 +255,34 @@ export function NewVideo({ config, ready, onSetup, onCreated }: Props): JSX.Elem
           )}
 
           {ctl.error && <div className="banner warn">{ctl.error}</div>}
+
+          {(ctl.status === 'done' || ctl.status === 'error' || ctl.status === 'canceled') && activeSlug && (
+            <div className="panel col">
+              <div className="sub">
+                Go back to any step and run it again from there — later steps re-run too; earlier finished ones are
+                kept.
+              </div>
+              <div className="row">
+                <select
+                  value={retryStage || failedStage}
+                  onChange={(e) => setRetryStage(e.target.value as StageId)}
+                  style={{ flex: 1 }}
+                >
+                  {meta.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                      {m.paid ? ' — spends credits' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn primary" onClick={() => retryFrom((retryStage || failedStage) as StageId)}>
+                  <ArrowCounterClockwise size={15} /> Run again from “
+                  {meta.find((m) => m.id === (retryStage || failedStage))?.label}”
+                </button>
+              </div>
+            </div>
+          )}
+
           <RunConsole ctl={ctl} />
         </div>
       )}

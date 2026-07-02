@@ -1,6 +1,6 @@
 {
   "name": "youtube-explainer-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Stickman Studio — turn a topic into a finished stick-figure explainer video, powered by Claude Code skills.",
   "main": "./out/main/index.js",
   "author": "Stickman Studio",

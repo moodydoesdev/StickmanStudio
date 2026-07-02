@@ -320,6 +320,12 @@ button {
   padding: 5px 10px;
   font-size: 12px;
 }
+.btn.danger {
+  color: var(--err);
+}
+.btn.danger:hover {
+  border-color: var(--err);
+}
 
 /* Cards / panels */
 .panel {
@@ -425,6 +431,7 @@ textarea {
 
 /* Library grid */
 .card {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -434,6 +441,31 @@ textarea {
 }
 .card:hover {
   border-color: #3a4050;
+}
+.card .del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(12, 13, 18, 0.85);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.card:hover .del {
+  opacity: 1;
+}
+.card .del:hover {
+  color: var(--err);
+  border-color: var(--err);
 }
 .card .thumb {
   aspect-ratio: 16 / 9;
