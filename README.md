@@ -189,8 +189,6 @@ stalls on a permission prompt, adjust the flags in **`src/main/lib/pipeline.ts`*
 
 - **SmartScreen "unknown publisher"** — expected for an unsigned build; click *More
   info → Run anyway*, or sign the build.
-- **Explorer still shows a blurry icon after a rebuild** — Windows caches icons. Rename
-  the exe or clear the cache (`ie4uinit.exe -show`).
 - **"Voice limit reached" when adding a Voice Library voice** — adding a public voice
   consumes a slot in your ElevenLabs account (plan-limited). Remove one in ElevenLabs,
   or pick from **My voices**.
