@@ -62,6 +62,21 @@ per-video markup, no third-party "AI video" subscription.
 4. When it finishes, open the project to watch the MP4 and grab the description +
    thumbnails. Everything lives in `Documents/Stickman Studio/videos/<slug>/`.
 
+### Use the skills in the Claude apps (no desktop app, free plan works)
+
+The three skills that don't need local tools — **research-video**,
+**video-image-prompts** and **description** — are also published as ready-to-upload
+packages on the rolling
+[`skills` release](https://github.com/moodydoesdev/StickmanStudio/releases/tag/skills).
+CI rebuilds them (`scripts/package-skills.py` via `release-skills.yml`) whenever
+`resources/skills/` changes on `main`.
+
+To install one: download its `.zip`, then in Claude open **Settings → Capabilities →
+Skills**, enable **code execution**, and choose **Upload skill**. Attach your
+script/transcript files to the chat when using them — the app can't see your local
+video folders. The remaining skills (narrate, transcribe, images, render, …) need
+local binaries and only work through this app or Claude Code.
+
 ---
 
 ## What gets installed, and where
